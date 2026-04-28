@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8" />
+  <title>VersaTiles - Demo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="https://tiles.versatiles.org/assets/lib/maplibre-gl/maplibre-gl.js"></script>
+  <script src="https://loc8.us/maplibre-gl-vector-text-protocol/dist/maplibre-gl-vector-text-protocol.js"></script>
+  <link href="https://tiles.versatiles.org/assets/lib/maplibre-gl/maplibre-gl.css" rel="stylesheet" />
+  <style>
+    body { margin: 0 }
+  </style>
+</head>
+
+<body>
+  <div id="map" style="width: 100%; height: 100vh;"></div>
+  <script>
+    VectorTextProtocol.addProtocols(maplibregl);
+
+    const map = new maplibregl.Map({
+      container: 'map',
+      style: 'https://tiles.versatiles.org/assets/styles/graybeard/style.json',
+      center: [9.11, 33.11],
+      zoom: 9,
+      maxZoom: 14,
+    });
+
+    map.addControl(new maplibregl.NavigationControl({ showCompass: false }));
+
+    map.dragRotate.disable();
+    map.touchZoomRotate.disableRotation();
+
+    map.on('load', async () => {
+
+      // TRACK
+
+      const filename = new URLSearchParams(window.location.search).get('q');
+      
+      if (filename) {
+        map.addSource(filename, {
+          type: 'geojson',
+          data: `gpx://${location.origin}${location.pathname}tracks/${filename}.gpx`,
+        });
+        map.addLayer({
+          id: filename,
+          source: filename,
+          type: 'line',
+          paint: {
+            'line-color': 'blue',
+            'line-width': 5,
+            'line-opacity': 0.6,
+          },
+        });
+      }
+
+      // TERRAIN
+
+      map.addSource('aws-terrain', {
+        type: 'raster-dem',
+        tiles: [
+          'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png',
+        ],
+        encoding: 'terrarium',
+        tileSize: 256,
+        attribution:
+          '© <a href="https://www.mapzen.com/rights">Mapzen</a> and <a href="https://www.mapzen.com/rights/#services-and-data-sources">others</a>',
+      });
+
+      map.addLayer(
+        {
+          id: 'hills',
+          source: 'aws-terrain',
+          type: 'hillshade',
+          layout: { visibility: 'visible' },
+          maxzoom: 15,
+          paint: {
+            'hillshade-exaggeration': 1,
+            'hillshade-accent-color': 'hsla(0, 0%, 0%, 0.5)',
+            'hillshade-highlight-color': 'hsla(100, 100%, 100%, 0.3)',
+            'hillshade-shadow-color': 'hsla(0, 0%, 0%, 0.3)',
+          },
+        },
+        'water-ocean'
+      );
+
+      // POI
+
+      await map
+        .loadImage(`point.png`)
+        .then((res) => map.addImage('poi-marker', res.data));
+
+      await fetch(`poi.json`)
+        .then((res) => res.json())
+        .then((list) => {
+          map.addSource('places', {
+            type: 'geojson',
+            data: {
+              type: 'FeatureCollection',
+              features: list.map(({ name, lat, lon }) => ({
+                type: 'Feature',
+                properties: {
+                  description: name,
+                  icon: 'poi-marker',
+                },
+                geometry: {
+                  type: 'Point',
+                  coordinates: [lon, lat],
+                },
+              })),
+            },
+          });
+
+          map.addLayer({
+            id: 'poi-labels',
+            type: 'symbol',
+            source: 'places',
+            layout: {
+              'text-font': ['noto_sans_regular'],
+              'text-field': ['get', 'description'],
+              'text-variable-anchor': ['top', 'bottom', 'left', 'right'],
+              'text-radial-offset': 1,
+              'text-size': 12,
+              'text-justify': 'auto',
+              'icon-image': ['get', 'icon'],
+            },
+          });
+        });
+    });
+
+  </script>
+</body>
+
+</html>
